@@ -7,6 +7,7 @@ import authRoutes from "./routes/AuthRoutes.js";
 import contactsRoutes from "./routes/ContactRoutes.js";
 import messagesRoutes from "./routes/MessagesRoutes.js";
 import groupRoutes from "./routes/GroupRoutes.js";
+import setupSocket from "./socket.js";
 import friendRequestsRoutes from "./routes/FriendRequestsRoute.js";
 import uploadRoutes from "./routes/UploadRoutes.js";
 import statusRoutes from "./routes/StatusRoutes.js";
@@ -14,22 +15,20 @@ import statusRoutes from "./routes/StatusRoutes.js";
 dotenv.config();
 
 const app = express();
+const port = process.env.PORT || 3001;
 const databaseURL = process.env.DATABASE_URL;
+const origin = process.env.ORIGIN;
 
-let isConnected = false;
-const connectDB = async () => {
-  if (isConnected) return;
-  if (!databaseURL) {
-    throw new Error("DATABASE_URL is not defined");
-  }
-  await mongoose.connect(databaseURL);
-  isConnected = true;
-  console.log("Connected to MongoDB successfully.");
-};
+if (!databaseURL) {
+  throw new Error("DATABASE_URL is missing");
+}
+if (!origin) {
+  throw new Error("ORIGIN is missing");
+}
 
 app.use(
   cors({
-    origin: [process.env.ORIGIN],
+    origin: [origin],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     credentials: true,
   })
@@ -37,16 +36,6 @@ app.use(
 
 app.use(cookieParser());
 app.use(express.json());
-
-app.use(async (req, res, next) => {
-  try {
-    await connectDB();
-    return next();
-  } catch (error) {
-    console.error("Error connecting to MongoDB:", error);
-    return res.status(500).json({ message: "Database connection failed" });
-  }
-});
 
 app.use("/api/auth", authRoutes);
 app.use("/api/contacts", contactsRoutes);
@@ -56,4 +45,16 @@ app.use("/api/friend-requests", friendRequestsRoutes);
 app.use("/api/uploads", uploadRoutes);
 app.use("/api/status", statusRoutes);
 
-export default app;
+mongoose
+  .connect(databaseURL)
+  .then(() => {
+    console.log("Connected to MongoDB successfully.");
+    const server = app.listen(port, () => {
+      console.log(`Server running on port ${port}`);
+    });
+    setupSocket(server);
+  })
+  .catch((error) => {
+    console.error("Error connecting to MongoDB:", error);
+    process.exit(1);
+  });
